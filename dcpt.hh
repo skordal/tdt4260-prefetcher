@@ -20,5 +20,17 @@ class DCPTEntry
 		int deltaNext;
 };
 
+
+class DCPTTable
+{
+	public:
+		DCPTTable(int entries);
+		~DCPTTable();
+
+		DCPTEntry & getEntry(Addr pc);
+		void insertEntry(const DCPTEntry & entry);
+	private:
+};
+
 #endif
 
