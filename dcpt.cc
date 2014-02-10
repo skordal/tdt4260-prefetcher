@@ -3,8 +3,8 @@
 #include <cstring>
 #include "dcpt.hh"
 
-#define DELTAPTR_INC(x)	(x + NUMBER_OF_DELTAS + 1 % NUMBER_OF_DELTAS)
-#define DELTAPTR_DEC(x)	(x + NUMBER_OF_DELTAS - 1 % NUMBER_OF_DELTAS)
+#define DELTAPTR_INC(x)	((x + NUMBER_OF_DELTAS + 1) % NUMBER_OF_DELTAS)
+#define DELTAPTR_DEC(x)	((x + NUMBER_OF_DELTAS - 1) % NUMBER_OF_DELTAS)
 
 using namespace std;
 
@@ -26,6 +26,9 @@ void DCPTEntry::miss(Addr & addr, Addr ** prefetch, int & size)
 
 	int a = deltaArray[start], b = delta;
 
+	*prefetch = 0;
+	size = 0;
+
 	for(int i = start; i != DELTAPTR_DEC(deltaNext); i = DELTAPTR_DEC(i))
 	{
 		if(deltaArray[DELTAPTR_DEC(i)] == a && deltaArray[i] == b)
@@ -34,19 +37,16 @@ void DCPTEntry::miss(Addr & addr, Addr ** prefetch, int & size)
 			break;
 		}
 	}
-
-	*prefetch = 0;
-	size = 0;
 }
 
-void DCPTEntry::collectPrefetchCandidates(int start, Addr ** prefetch, int & size)
+void DCPTEntry::collectPrefetchCandidates(int start, Addr ** prefetch, int & size) const
 {
 	list<Addr> candidates;
 	list<Addr>::iterator it;
 	int prevAddress = lastAddress;
 	int a = 0;
 
-	for(int i = start; start != start + NUMBER_OF_DELTAS - 2 % NUMBER_OF_DELTAS; i = DELTAPTR_INC(i))
+	for(int i = start; start != (start + NUMBER_OF_DELTAS - 2) % NUMBER_OF_DELTAS; i = DELTAPTR_INC(i))
 	{
 		if(!in_cache(prevAddress + deltaArray[i]))
 			candidates.push_front(prevAddress + deltaArray[i]);
@@ -66,15 +66,6 @@ void DCPTEntry::collectPrefetchCandidates(int start, Addr ** prefetch, int & siz
 	size = candidates.size();
 }
 
-int DCPTEntry::getPreviousDelta() const
-{
-	int index = deltaNext - 1;
-	if(index < 0)
-		index = index + NUMBER_OF_DELTAS;
-	
-	return deltaArray[index];
-}
-
 DCPTTable::DCPTTable(int entries) : entries(entries)
 {
 
@@ -88,7 +79,7 @@ DCPTEntry * DCPTTable::getEntry(Addr pc)
 		DCPTEntry * entry = *i;
 		if(pc == entry->getPC())
 		{
-			table.erase(i);
+			i = table.erase(i);
 			table.push_front(entry);
 			return entry;
 		}
@@ -99,8 +90,8 @@ DCPTEntry * DCPTTable::getEntry(Addr pc)
 
 	if(table.size() > entries)
 	{
-		DCPTEntry * last = *table.end();
-		table.erase(table.end());
+		DCPTEntry * last = table.back();
+		table.pop_back();
 		delete last;
 	}
 

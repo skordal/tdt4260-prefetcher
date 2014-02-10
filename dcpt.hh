@@ -16,8 +16,7 @@ class DCPTEntry
 
 		void miss(Addr & addr, Addr ** prefetch, int & size);
 	private:
-		void collectPrefetchCandidates(int start, Addr ** prefetch, int & size);
-		int getPreviousDelta() const;
+		void collectPrefetchCandidates(int start, Addr ** prefetch, int & size) const;
 
 		Addr pc, lastAddress, lastPrefetch;
 		int deltaArray[DCPTEntry::NUMBER_OF_DELTAS];

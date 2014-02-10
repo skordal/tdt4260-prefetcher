@@ -7,32 +7,33 @@
 #include "interface.hh"
 #include "dcpt.hh"
 
-static DCPTTable * table;
+static DCPTTable * table = new DCPTTable(80);
 
 void prefetch_init(void)
 {
 	/* Called before any calls to prefetch_access. */
 	/* This is the place to initialize data structures. */
 
-	table = new DCPTTable(80);
+//	table = new DCPTTable(80);
 	DPRINTF(HWPrefetch, "Initialized DCPT-based prefetcher\n");
 }
 
 void prefetch_access(AccessStat stat)
 {
-	int size;
+	int size = 0;
 	Addr * prefetchList = 0;
-	DCPTEntry * entry = table->getEntry(stat.pc);
-	if(stat.miss)
-		entry->miss(stat.mem_addr, &prefetchList, size);
 
-	DPRINTF(HWPrefetch, "Prefetch list is %#x\n", prefetchList);
+	if(stat.miss)
+	{
+		DCPTEntry * entry = table->getEntry(stat.pc);
+		entry->miss(stat.mem_addr, &prefetchList, size);
+	}
+
 	if(prefetchList != 0)
 	{
 		if(current_queue_size() >= MAX_QUEUE_SIZE)
 		{
 			delete[] prefetchList;
-			return;
 		} else {
 			for(int i = 0; i < size; ++i)
 				issue_prefetch(prefetchList[i]);
