@@ -16,6 +16,8 @@ DCPTEntry::DCPTEntry(Addr pc) : pc(pc), lastAddress(0), lastPrefetch(0), deltaNe
 void DCPTEntry::miss(Addr & addr, Addr ** prefetch, int & size)
 {
 	int delta = addr - lastAddress;
+	delta %= (1 << 10);
+
 	if(delta == 0)
 		return;
 
@@ -33,20 +35,20 @@ void DCPTEntry::miss(Addr & addr, Addr ** prefetch, int & size)
 	{
 		if(deltaArray[DELTAPTR_DEC(i)] == a && deltaArray[i] == b)
 		{
-			collectPrefetchCandidates(DELTAPTR_INC(i), prefetch, size);
+			collectPrefetchCandidates(DELTAPTR_INC(i), start, prefetch, size);
 			break;
 		}
 	}
 }
 
-void DCPTEntry::collectPrefetchCandidates(int start, Addr ** prefetch, int & size) const
+void DCPTEntry::collectPrefetchCandidates(int start, int stop, Addr ** prefetch, int & size) const
 {
 	list<Addr> candidates;
 	list<Addr>::iterator it;
 	int prevAddress = lastAddress;
 	int a = 0;
 
-	for(int i = start; start != (start + NUMBER_OF_DELTAS - 2) % NUMBER_OF_DELTAS; i = DELTAPTR_INC(i))
+	for(int i = start; i != stop; i = DELTAPTR_INC(i))
 	{
 		if(!in_cache(prevAddress + deltaArray[i]))
 			candidates.push_front(prevAddress + deltaArray[i]);
@@ -91,8 +93,8 @@ DCPTEntry * DCPTTable::getEntry(Addr pc)
 	if(table.size() > entries)
 	{
 		DCPTEntry * last = table.back();
-		table.pop_back();
 		delete last;
+		table.pop_back();
 	}
 
 	return newEntry;
