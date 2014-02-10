@@ -1,6 +1,9 @@
 /* C interface for prefetchers. */
 /* DO NOT MODIFY THIS FILE */
 
+#ifndef INTERFACE_H
+#define INTERFACE_H
+
 #include <stdint.h>
 
 /*
@@ -97,3 +100,6 @@ extern "C" int in_mshr_queue(Addr addr);
 
 /* Number of occupied slots in the prefetch request queue */
 extern "C" int current_queue_size(void);
+
+#endif
+

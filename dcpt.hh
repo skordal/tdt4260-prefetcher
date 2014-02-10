@@ -4,6 +4,7 @@
 #define DCPT_HH
 
 #include "interface.hh"
+#include <list>
 
 class DCPTEntry
 {
@@ -12,7 +13,10 @@ class DCPTEntry
 
 		DCPTEntry(Addr pc);
 		Addr getPC() const { return pc; }
+
+		void miss(Addr & addr, Addr ** prefetch, int & size);
 	private:
+		void collectPrefetchCandidates(int start, Addr ** prefetch, int & size);
 		int getPreviousDelta() const;
 
 		Addr pc, lastAddress, lastPrefetch;
@@ -20,16 +24,16 @@ class DCPTEntry
 		int deltaNext;
 };
 
-
 class DCPTTable
 {
 	public:
 		DCPTTable(int entries);
 		~DCPTTable();
 
-		DCPTEntry & getEntry(Addr pc);
-		void insertEntry(const DCPTEntry & entry);
+		DCPTEntry * getEntry(Addr pc);
 	private:
+		std::list<DCPTEntry *> table;
+		int entries;
 };
 
 #endif
