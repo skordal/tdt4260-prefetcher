@@ -1,7 +1,5 @@
 /*
- * A sample prefetcher which does sequential one-block lookahead.
- * This means that the prefetcher fetches the next block _after_ the one that
- * was just accessed. It also ignores requests to blocks already in the cache.
+ * Awesome DCPT-based prefetcher
  */
 
 #include "interface.hh"
@@ -51,8 +49,7 @@ DCPTEntry::DCPTEntry(Addr pc) : pc(pc), lastAddress(0), lastPrefetch(0), deltaNe
 void DCPTEntry::miss(Addr & addr, Addr ** prefetch, int & size)
 {
 	int delta = addr - lastAddress;
-	delta %= (1 << 10);
-
+	delta %= (1 << 12);
 	if(delta == 0)
 		return;
 
@@ -140,7 +137,7 @@ void prefetch_init(void)
 	/* Called before any calls to prefetch_access. */
 	/* This is the place to initialize data structures. */
 
-	table = new DCPTTable(80);
+	table = new DCPTTable(82);
 	DPRINTF(HWPrefetch, "Initialized DCPT-based prefetcher\n");
 }
 
@@ -158,16 +155,28 @@ void prefetch_access(AccessStat stat)
 	if(prefetchList != 0)
 	{
 		if(current_queue_size() >= MAX_QUEUE_SIZE - size)
-		{
 			delete[] prefetchList;
-		} else {
+		else {
 			for(int i = 0; i < size; ++i)
-				issue_prefetch(prefetchList[i]);
+			{
+				if(!in_cache(prefetchList[i]) && prefetchList[i] < MAX_PHYS_MEM_ADDR)
+					issue_prefetch(prefetchList[i]);
+			}
 			delete[] prefetchList;
 		}
 	} else {
 		if(stat.miss)
-			issue_prefetch(stat.mem_addr + BLOCK_SIZE);
+		{
+			if(!in_cache(stat.mem_addr + BLOCK_SIZE))
+				issue_prefetch(stat.mem_addr + BLOCK_SIZE);
+			if(!in_cache(stat.mem_addr + BLOCK_SIZE * 2))
+				issue_prefetch(stat.mem_addr + BLOCK_SIZE * 2);
+		} else {
+			if(!in_cache(stat.mem_addr + BLOCK_SIZE))
+				issue_prefetch(stat.mem_addr + BLOCK_SIZE);
+			if(!in_cache(stat.mem_addr + BLOCK_SIZE * 2))
+				issue_prefetch(stat.mem_addr + BLOCK_SIZE * 2);
+		}
 	}
 }
 
