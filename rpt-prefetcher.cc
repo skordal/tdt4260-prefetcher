@@ -26,15 +26,21 @@ void RPTEntry::miss(Addr addr)
 {
 	int newDelta = addr - lastAddress;
 
-	if(delta == newDelta)
+	if(delta == newDelta && !in_cache(addr + delta))
+	{
+ 		DPRINTF(HWPrefetch, "Prefetching %#x for lastAddress %#x and delta %d\n", addr + delta,
+			lastAddress, delta);
 		issue_prefetch(addr + delta);
+	}
+
 	delta = newDelta;
+	lastAddress = addr;
 }
 
 class RPTTable
 {
 	public:
-		static const int MAX_ENTRIES = 128;
+		static const int MAX_ENTRIES = 256;
 
 		RPTTable();
 		RPTEntry * get(Addr pc);
@@ -62,13 +68,37 @@ RPTEntry * RPTTable::get(Addr pc)
 			delete oldest;
 		}
 
-		head->next = newEntry;
-		newEntry->prev = head;
-		head = newEntry;
+		if(head != 0)
+		{
+			head->next = newEntry;
+			newEntry->prev = head;
+		} else {
+			tail = newEntry;
+			newEntry->next = 0;
+			newEntry->prev = 0;
+		}
 
+		head = newEntry;
 		entryMap[pc] = newEntry;
 
-		++currentEntries;
+		if(currentEntries < MAX_ENTRIES)
+			++currentEntries;
+	} else {
+		RPTEntry * entry = entryMap[pc];
+
+		if(entry != head)
+		{
+			entry->next->prev = entry->prev;
+			if(entry->prev)
+				entry->prev->next = entry->next;
+			else
+				tail = entry->next;
+
+			entry->next = 0;
+			head->next = entry;
+			entry->prev = head;
+			head = entry;
+		}
 	}
 
 	return entryMap[pc];
@@ -85,6 +115,8 @@ void prefetch_access(AccessStat stat)
 {
 	if(stat.miss)
 	{
+		stat.mem_addr &= -BLOCK_SIZE;
+
 		RPTEntry * entry = table->get(stat.pc);
 		entry->miss(stat.mem_addr);
 	}
