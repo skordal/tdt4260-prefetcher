@@ -51,7 +51,7 @@ void DCPTEntry::miss(Addr & addr, Addr ** prefetch, int & size)
 {
 	int delta = addr - lastAddress;
 	delta /= BLOCK_SIZE;
-	delta &= -(1 << DELTA_BITFIELD_WIDTH);
+	delta &= ~(-(1 << DELTA_BITFIELD_WIDTH));
 
 	if(delta == 0)
 		return;
