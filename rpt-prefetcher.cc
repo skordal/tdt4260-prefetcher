@@ -10,7 +10,7 @@
 struct RPTEntry
 {
 		RPTEntry(Addr pc);
-		Addr miss(Addr addr);
+		void miss(Addr addr);
 
 		Addr pc, lastAddress;
 		int delta;
@@ -22,7 +22,7 @@ RPTEntry::RPTEntry(Addr pc) : pc(pc), lastAddress(0), delta(0), next(0), prev(0)
 
 }
 
-Addr RPTEntry::miss(Addr addr)
+void RPTEntry::miss(Addr addr)
 {
 	int newDelta = addr - lastAddress;
 
@@ -37,18 +37,18 @@ class RPTTable
 		static const int MAX_ENTRIES = 128;
 
 		RPTTable();
-		RPTEntry * get(Addr pc, Addr access);
+		RPTEntry * get(Addr pc);
 	private:
-		std::map<Addr, RPTEntry *> entryMap;
-		RPTEntry * head, * tail;
 		int currentEntries;
+		RPTEntry * head, * tail;
+		std::map<Addr, RPTEntry *> entryMap;
 };
 
 RPTTable::RPTTable() : currentEntries(0), head(0), tail(0)
 {
 }
 
-RPTEntry * RPTTable::get(Addr pc, Addr access)
+RPTEntry * RPTTable::get(Addr pc)
 {
 	if(entryMap.find(pc) == entryMap.end())
 	{
