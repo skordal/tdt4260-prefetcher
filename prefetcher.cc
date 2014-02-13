@@ -9,6 +9,7 @@ class DCPTEntry
 {
 	public:
 		static const int NUMBER_OF_DELTAS = 16;
+		static const int DELTA_BITFIELD_WIDTH = 12;
 
 		DCPTEntry(Addr pc);
 		Addr getPC() const { return pc; }
@@ -49,7 +50,9 @@ DCPTEntry::DCPTEntry(Addr pc) : pc(pc), lastAddress(0), lastPrefetch(0), deltaNe
 void DCPTEntry::miss(Addr & addr, Addr ** prefetch, int & size)
 {
 	int delta = addr - lastAddress;
-	delta %= (1 << 12);
+	delta /= BLOCK_SIZE;
+	delta &= -(1 << DELTA_BITFIELD_WIDTH);
+
 	if(delta == 0)
 		return;
 
@@ -68,6 +71,7 @@ void DCPTEntry::miss(Addr & addr, Addr ** prefetch, int & size)
 		if(deltaArray[DELTAPTR_DEC(i)] == a && deltaArray[i] == b)
 		{
 			collectPrefetchCandidates(DELTAPTR_INC(i), start, prefetch, size);
+			lastPrefetch = (*prefetch)[size - 1];
 			break;
 		}
 	}
@@ -82,9 +86,8 @@ void DCPTEntry::collectPrefetchCandidates(int start, int stop, Addr ** prefetch,
 
 	for(int i = start; i != stop; i = DELTAPTR_INC(i))
 	{
-		if(!in_cache(prevAddress + deltaArray[i]))
-			candidates.push_front(prevAddress + deltaArray[i]);
-		prevAddress += deltaArray[i];
+		candidates.push_back(prevAddress + deltaArray[i] * BLOCK_SIZE);
+		prevAddress += deltaArray[i] * BLOCK_SIZE;
 	}
 
 	for(it = candidates.begin(); it != candidates.end(); ++it)
@@ -150,7 +153,8 @@ void prefetch_access(AccessStat stat)
 	{
 		DCPTEntry * entry = table->getEntry(stat.pc);
 		entry->miss(stat.mem_addr, &prefetchList, size);
-	}
+	} else 
+		table->getEntry(stat.pc);
 
 	if(prefetchList != 0)
 	{
@@ -159,7 +163,7 @@ void prefetch_access(AccessStat stat)
 		else {
 			for(int i = 0; i < size; ++i)
 			{
-				if(!in_cache(prefetchList[i]) && prefetchList[i] < MAX_PHYS_MEM_ADDR)
+				if(!in_cache(prefetchList[i]) && !in_mshr_queue(prefetchList[i]) && prefetchList[i] < MAX_PHYS_MEM_ADDR)
 					issue_prefetch(prefetchList[i]);
 			}
 			delete[] prefetchList;
