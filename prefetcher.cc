@@ -153,8 +153,7 @@ void prefetch_access(AccessStat stat)
 	{
 		DCPTEntry * entry = table->getEntry(stat.pc);
 		entry->miss(stat.mem_addr, &prefetchList, size);
-	} else 
-		table->getEntry(stat.pc);
+	}
 
 	if(prefetchList != 0)
 	{
