@@ -8,9 +8,8 @@ class entry:
 	
 	def update(self, new_address):
 		new_delta = new_address - self.last_address
-		if delta:
-			if new_delta == self.delta:
-				prefetch(new_address, new_delta)
+		if new_delta == self.delta:
+			prefetch(new_address, new_delta)
 		self.delta = new_delta
 		
 def on_miss(program_counter, miss_address):
