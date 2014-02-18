@@ -47,17 +47,18 @@ class DCPTEntry
 {
 	public:
 		static const int NUM_DELTAS = 16;
-		static const int NUM_DELTA_BITS = 12;
+		static const int NUM_DELTA_BITS = 16;
+		static const int NUM_MASKED_BITS = 8;
 
 		DCPTEntry(Addr pc);
 
 		Addr getPC() const { return pc; }
 
 		void miss(Addr address);
-		void hit(Addr address);
 	private:
-		const int minDelta() const { return 1; }
-		const int maxDelta() const { return ~(-(1 << NUM_DELTA_BITS)); }
+		int minDelta() const { return 1; }
+		int maxDelta() const { return -(-(1 << NUM_DELTA_BITS)); }
+		int partialMask() const { return -(1 << NUM_MASKED_BITS); }
 		void issuePrefetches(int patternStart, int patternEnd);
 
 		Addr pc, lastAddress, lastPrefetch;
@@ -74,19 +75,34 @@ void DCPTEntry::miss(Addr address)
 {
 	int delta = (address - lastAddress) / (BLOCK_SIZE);
 	if(delta > maxDelta())
-		delta = minDelta();
-
+		delta = maxDelta();
 	if(delta == 0)
-		return;
+		delta = minDelta();
 
 	deltas[deltaPtr] = delta;
 	int start = deltaPtr - 1;
 	++deltaPtr;
 
 	int a = deltas[start], b = delta;
+	bool fullMatchFound = false;
+
+	// Try to find a match by looking at all bits in the deltas:
 	for(modint<NUM_DELTAS> i = start; i != deltaPtr; --i)
 	{
 		if(deltas[i - 1] == a && deltas[i] == b)
+		{
+			issuePrefetches(i + 1, start);
+			fullMatchFound = true;
+			break;
+		}
+	}
+
+	// Do partial matching if no full match was found:
+	a &= partialMask();
+	b &= partialMask();
+	for(modint<NUM_DELTAS> i = start; i != deltaPtr && !fullMatchFound; --i)
+	{
+		if((deltas[i - 1] & partialMask()) == a && (deltas[i] & partialMask()) == b)
 		{
 			issuePrefetches(i + 1, start);
 			break;
@@ -106,9 +122,9 @@ void DCPTEntry::issuePrefetches(int patternStart, int patternEnd)
 	for(modint<NUM_DELTAS> i = patternStart; i != patternEnd; ++i)
 	{
 		candidates[cEnd++] = prev + deltas[i] * (BLOCK_SIZE);
-		if(lastPrefetch == prev + deltas[i] * (BLOCK_SIZE))
+		if(lastPrefetch == candidates[cEnd - 1])
 			cStart = cEnd;
-		prev = prev + deltas[i] * (BLOCK_SIZE);
+		prev = candidates[cEnd - 1];
 	}
 
 	// Issue prefetches:
@@ -117,8 +133,10 @@ void DCPTEntry::issuePrefetches(int patternStart, int patternEnd)
 		if(!in_cache(candidates[i]) && !in_mshr_queue(candidates[i]) && candidates[i] < MAX_PHYS_MEM_ADDR && current_queue_size() < MAX_QUEUE_SIZE)
 		{
 			issue_prefetch(candidates[i]);
+			set_prefetch_bit(candidates[i]);
 			lastPrefetch = candidates[i];
 		}
+
 	}
 }
 
@@ -127,7 +145,7 @@ void DCPTEntry::issuePrefetches(int patternStart, int patternEnd)
 class DCPTTable
 {
 	public:
-		static const int MAX_ENTRIES = 92;
+		static const int MAX_ENTRIES = 82;
 		DCPTEntry * get(Addr pc, bool create = true);
 	private:
 		list<DCPTEntry *> table;
@@ -174,11 +192,8 @@ void prefetch_init(void)
 
 void prefetch_access(AccessStat stat)
 {
-	if(stat.miss)
-	{
-		DCPTEntry * entry = table->get(stat.pc);
-		entry->miss(stat.mem_addr);
-	}
+//	if(stat.miss)
+	table->get(stat.pc)->miss(stat.mem_addr);
 }
 
 void prefetch_complete(Addr addr)
