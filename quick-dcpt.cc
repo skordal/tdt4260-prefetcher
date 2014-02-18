@@ -192,8 +192,8 @@ void prefetch_init(void)
 
 void prefetch_access(AccessStat stat)
 {
-//	if(stat.miss)
-	table->get(stat.pc)->miss(stat.mem_addr);
+	if(stat.miss)
+		table->get(stat.pc)->miss(stat.mem_addr);
 }
 
 void prefetch_complete(Addr addr)
