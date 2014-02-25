@@ -5,6 +5,8 @@
 
 #include "interface.hh"
 
+#define ALGOSWITCH_NUM	800000UL
+
 using namespace std;
 
 /* Notes:
@@ -14,7 +16,7 @@ using namespace std;
  * to the L2".
  */
 
-/* ---------- Modular Integer Stuff ---------- */
+/* ---------- Modular Integer ---------- */
 
 template<int modulo>
 class modint
@@ -24,8 +26,8 @@ class modint
 
 		modint & operator=(int value) { this->value = value % modulo; return *this; }
 
-		modint operator+(int add) { return modint<modulo>(value + add); }
-		modint operator-(int sub) { return modint<modulo>((value + modulo - (sub % modulo))); }
+		modint operator+(int add) const { return modint<modulo>(value + add); }
+		modint operator-(int sub) const { return modint<modulo>((value + modulo - (sub % modulo))); }
 		modint & operator++() { value = (value + modulo + 1) % modulo; return *this; }
 		modint & operator--() { value = (value + modulo - 1) % modulo; return *this; }
 		modint operator++(int) { int retval = value; value = (value + modulo + 1) % modulo; return modint<modulo>(retval); }
@@ -41,17 +43,16 @@ class modint
 		int value;
 };
 
-/* ---------- DCPTEntry Stuff ---------- */
+/* ---------- DCPTEntry ---------- */
 
 class DCPTEntry
 {
 	public:
 		static const int NUM_DELTAS = 16;
-		static const int NUM_DELTA_BITS = 16;
+		static const int NUM_DELTA_BITS = 22;
 		static const int NUM_MASKED_BITS = 8;
 
 		DCPTEntry(Addr pc);
-
 		Addr getPC() const { return pc; }
 
 		void miss(Addr address);
@@ -59,6 +60,8 @@ class DCPTEntry
 		int minDelta() const { return 1; }
 		int maxDelta() const { return -(-(1 << NUM_DELTA_BITS)); }
 		int partialMask() const { return -(1 << NUM_MASKED_BITS); }
+		int blockSize() const { return BLOCK_SIZE >> 1; }
+
 		void issuePrefetches(int patternStart, int patternEnd);
 
 		Addr pc, lastAddress, lastPrefetch;
@@ -73,7 +76,7 @@ DCPTEntry::DCPTEntry(Addr pc) : pc(pc), lastAddress(0), lastPrefetch(0), deltaPt
 
 void DCPTEntry::miss(Addr address)
 {
-	int delta = (address - lastAddress) / (BLOCK_SIZE);
+	int delta = (address - lastAddress) / blockSize();
 	if(delta > maxDelta())
 		delta = maxDelta();
 	if(delta == 0)
@@ -85,6 +88,8 @@ void DCPTEntry::miss(Addr address)
 
 	int a = deltas[start], b = delta;
 	bool fullMatchFound = false;
+
+	lastAddress = address;
 
 	// Try to find a match by looking at all bits in the deltas:
 	for(modint<NUM_DELTAS> i = start; i != deltaPtr; --i)
@@ -98,18 +103,19 @@ void DCPTEntry::miss(Addr address)
 	}
 
 	// Do partial matching if no full match was found:
-	a &= partialMask();
-	b &= partialMask();
-	for(modint<NUM_DELTAS> i = start; i != deltaPtr && !fullMatchFound; --i)
+	if(!fullMatchFound)
 	{
-		if((deltas[i - 1] & partialMask()) == a && (deltas[i] & partialMask()) == b)
+		a &= partialMask();
+		b &= partialMask();
+		for(modint<NUM_DELTAS> i = start; i != deltaPtr; --i)
 		{
-			issuePrefetches(i + 1, start);
-			break;
+			if((deltas[i - 1] & partialMask()) == a && (deltas[i] & partialMask()) == b)
+			{
+				issuePrefetches(i + 1, start);
+				break;
+			}
 		}
 	}
-
-	lastAddress = address;
 }
 
 void DCPTEntry::issuePrefetches(int patternStart, int patternEnd)
@@ -121,7 +127,7 @@ void DCPTEntry::issuePrefetches(int patternStart, int patternEnd)
 	// Create prefetch candidate list:
 	for(modint<NUM_DELTAS> i = patternStart; i != patternEnd; ++i)
 	{
-		candidates[cEnd++] = prev + deltas[i] * (BLOCK_SIZE);
+		candidates[cEnd++] = prev + deltas[i] * blockSize();
 		if(lastPrefetch == candidates[cEnd - 1])
 			cStart = cEnd;
 		prev = candidates[cEnd - 1];
@@ -140,13 +146,16 @@ void DCPTEntry::issuePrefetches(int patternStart, int patternEnd)
 	}
 }
 
-/* ---------- DCPTTable Stuff ---------- */
+/* ---------- DCPTTable ---------- */
 
 class DCPTTable
 {
 	public:
-		static const int MAX_ENTRIES = 82;
+		static const int MAX_ENTRIES = 42;
+
+		DCPTTable() : accuracy(0.5) {}
 		DCPTEntry * get(Addr pc, bool create = true);
+		double accuracy;
 	private:
 		list<DCPTEntry *> table;
 };
@@ -181,19 +190,141 @@ DCPTEntry * DCPTTable::get(Addr pc, bool create)
 	return newEntry;
 }
 
+/* ---------- RPTEntry ---------- */
+
+struct RPTEntry
+{
+		RPTEntry(Addr pc);
+		void miss(Addr addr);
+
+		Addr pc, lastAddress;
+		int delta;
+};
+
+RPTEntry::RPTEntry(Addr pc) : pc(pc), lastAddress(0), delta(0)
+{
+
+}
+
+void RPTEntry::miss(Addr addr)
+{
+	int newDelta = addr - lastAddress;
+
+	if(delta == newDelta && !in_mshr_queue(addr + delta) && !in_cache(addr + delta))
+	{
+		issue_prefetch(addr + delta);
+		set_prefetch_bit(addr + delta);
+	}
+
+	delta = newDelta;
+	lastAddress = addr;
+}
+
+/* ---------- RPTTable ---------- */
+
+class RPTTable
+{
+	public:
+		static const int MAX_ENTRIES = 128;
+
+		RPTTable();
+		RPTEntry * get(Addr pc);
+		double accuracy;
+	private:
+		list<RPTEntry *> table;
+};
+
+RPTTable::RPTTable() : accuracy(0.5)
+{
+}
+
+RPTEntry * RPTTable::get(Addr pc)
+{
+	list<RPTEntry *>::iterator i;
+
+	for(i = table.begin(); i != table.end(); ++i)
+	{
+		RPTEntry * entry = *i;
+		if(entry->pc == pc)
+		{
+			i = table.erase(i);
+			table.push_front(entry);
+			return entry;
+		}
+	}
+
+	RPTEntry * newEntry = new RPTEntry(pc);
+	if(table.size() > MAX_ENTRIES)
+	{
+		RPTEntry * old = table.back();
+		table.pop_back();
+		delete old;
+	}
+
+	table.push_front(newEntry);
+	return newEntry;
+}
+
 /* ---------- M5 Interface Code ---------- */
-static DCPTTable * table;
+static DCPTTable * tableDCPT;
+static RPTTable * tableRPT;
+
+static enum { RPT, DCPT } activeAlgorithm = RPT;
+static unsigned long successes, hits;
 
 void prefetch_init(void)
 {
-	table = new DCPTTable;
+	tableDCPT = new DCPTTable;
+	tableRPT = new RPTTable;
+
+	successes = 0;
+	hits = 1;
+
 	DPRINTF(HWPrefetch, "Initialized DCPT-based prefetcher\n");
 }
 
 void prefetch_access(AccessStat stat)
 {
-	if(stat.miss)
-		table->get(stat.pc)->miss(stat.mem_addr);
+	if(!stat.miss && get_prefetch_bit(stat.mem_addr))
+	{
+		++hits;
+		++successes;
+	} else if(!stat.miss)
+		++hits;
+
+	if(activeAlgorithm == RPT)
+		tableRPT->get(stat.pc)->miss(stat.mem_addr);
+	else
+		tableDCPT->get(stat.pc)->miss(stat.mem_addr);
+	
+	if(hits >= ALGOSWITCH_NUM)
+	{
+		successes = 0;
+		hits = 1;
+
+		if(activeAlgorithm == RPT)
+			tableRPT->accuracy = (double) successes / (double) hits;
+		else
+			tableDCPT->accuracy = (double) successes / (double) hits;
+
+		int temp = rand() % 100;
+		int selectA = int(100.0 * tableDCPT->accuracy);
+		int selectB = int(100.0 * tableRPT->accuracy);
+
+		// Favour the algorithm with the highest accuracy:
+		if(tableDCPT->accuracy >= tableRPT->accuracy) // (initially favour DCPT, because we start with RPT)
+		{
+			if(selectA <= temp)
+				activeAlgorithm = DCPT;
+			else
+				activeAlgorithm = RPT;
+		} else {
+			if(selectB <= temp)
+				activeAlgorithm = RPT;
+			else
+				activeAlgorithm = DCPT;
+		}
+	}
 }
 
 void prefetch_complete(Addr addr)
