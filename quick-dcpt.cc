@@ -1,5 +1,7 @@
 /* DCPT implementation take 2 */
 
+#include <cstdlib>
+#include <cmath>
 #include <cstring>
 #include <list>
 
@@ -296,7 +298,7 @@ void prefetch_access(AccessStat stat)
 		tableRPT->get(stat.pc)->miss(stat.mem_addr);
 	else
 		tableDCPT->get(stat.pc)->miss(stat.mem_addr);
-	
+
 	if(hits >= ALGOSWITCH_NUM)
 	{
 		successes = 0;
