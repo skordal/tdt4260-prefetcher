@@ -8,8 +8,12 @@
 #include "interface.hh"
 
 #define ALGOSWITCH_NUM	800000UL
+#define ENABLE_FULL_DELTA_MATCHING	0
 
 using namespace std;
+
+static enum { RPT, DCPT } activeAlgorithm = RPT;
+static unsigned long hits, successes, prefetches, accesses;
 
 /* Notes:
  * Why divide BLOCK_SIZE by 2? According to the DCPT-P paper:
@@ -89,11 +93,12 @@ void DCPTEntry::miss(Addr address)
 	++deltaPtr;
 
 	int a = deltas[start], b = delta;
-	bool fullMatchFound = false;
 
 	lastAddress = address;
 
 	// Try to find a match by looking at all bits in the deltas:
+#ifdef ENABLE_FULL_DELTA_MATCHING
+	bool fullMatchFound = false;
 	for(modint<NUM_DELTAS> i = start; i != deltaPtr; --i)
 	{
 		if(deltas[i - 1] == a && deltas[i] == b)
@@ -107,6 +112,7 @@ void DCPTEntry::miss(Addr address)
 	// Do partial matching if no full match was found:
 	if(!fullMatchFound)
 	{
+#endif
 		a &= partialMask();
 		b &= partialMask();
 		for(modint<NUM_DELTAS> i = start; i != deltaPtr; --i)
@@ -117,7 +123,9 @@ void DCPTEntry::miss(Addr address)
 				break;
 			}
 		}
+#ifdef ENABLE_FULL_DELTA_MATCHING
 	}
+#endif
 }
 
 void DCPTEntry::issuePrefetches(int patternStart, int patternEnd)
@@ -141,6 +149,7 @@ void DCPTEntry::issuePrefetches(int patternStart, int patternEnd)
 		if(!in_cache(candidates[i]) && !in_mshr_queue(candidates[i]) && candidates[i] < MAX_PHYS_MEM_ADDR && current_queue_size() < MAX_QUEUE_SIZE)
 		{
 			issue_prefetch(candidates[i]);
+			++prefetches;
 			set_prefetch_bit(candidates[i]);
 			lastPrefetch = candidates[i];
 		}
@@ -215,6 +224,7 @@ void RPTEntry::miss(Addr addr)
 	if(delta == newDelta && !in_mshr_queue(addr + delta) && !in_cache(addr + delta))
 	{
 		issue_prefetch(addr + delta);
+		++prefetches;
 		set_prefetch_bit(addr + delta);
 	}
 
@@ -271,9 +281,6 @@ RPTEntry * RPTTable::get(Addr pc)
 static DCPTTable * tableDCPT;
 static RPTTable * tableRPT;
 
-static enum { RPT, DCPT } activeAlgorithm = RPT;
-static unsigned long successes, hits;
-
 void prefetch_init(void)
 {
 	tableDCPT = new DCPTTable;
@@ -281,6 +288,7 @@ void prefetch_init(void)
 
 	successes = 0;
 	hits = 1;
+	prefetches = 1;
 
 	DPRINTF(HWPrefetch, "Initialized DCPT-based prefetcher\n");
 }
@@ -298,16 +306,19 @@ void prefetch_access(AccessStat stat)
 		tableRPT->get(stat.pc)->miss(stat.mem_addr);
 	else
 		tableDCPT->get(stat.pc)->miss(stat.mem_addr);
+	++accesses;
 
 	if(hits >= ALGOSWITCH_NUM)
 	{
+		if(activeAlgorithm == RPT)
+			tableRPT->accuracy = (double) successes / (double) prefetches;
+		else
+			tableDCPT->accuracy = (double) successes / (double) prefetches;
+
 		successes = 0;
 		hits = 1;
-
-		if(activeAlgorithm == RPT)
-			tableRPT->accuracy = (double) successes / (double) hits;
-		else
-			tableDCPT->accuracy = (double) successes / (double) hits;
+		prefetches = 1;
+		accesses = 1;
 
 		int temp = rand() % 100;
 		int selectA = int(100.0 * tableDCPT->accuracy);
