@@ -1,0 +1,87 @@
+\documentclass[journal,a4paper]{IEEEtran}
+
+\usepackage{algorithmic}
+\usepackage[british]{babel}
+
+\begin{document}
+
+\title{An Adaptive Prefetcher Based on Delta-Correlating Prediction Tables and Reference Prediction Tables}
+\author{Kristian Klomsten Skordal, Christopher Lohne, Olav-Emil Eiksund}
+\maketitle
+
+\begin{abstract}
+This article describes an algorithm for L2 prefetching that combines the use of
+delta-correlating prediction tables (DCPT) and reference prediction tables in
+order to get improved prefetcher accuracy under varying conditions.
+
+Under our simulated conditions, a speedup of 7.6~\% was observed as compared to
+not using any prefetcher.
+\end{abstract}
+
+\section{Introduction}
+\IEEEPARstart{O}{ur} prefetcher is so awesome, and this paragraph has to be two
+lines long in order for the hanging first letter to look cool.
+
+\section{Related Work or Background}
+Insert related work and/or background here.
+
+\section{Prefetcher Description}
+The implemented prefetcher combines an RPT and a DCPT prefetcher, both using
+partial matching, in order to attempt to take advantage of the strengths of
+both, while, at the same time, minimizing the influence of the negative
+aspects of the algorithms.
+
+This is done by running both algorithms alternatively and tracking their
+accuracy. At a predefined number of cache misses, an algorithm decides if the
+currently running prefetcher algorithm should be switched. The switching
+algorithm gives preference to the prefetcher algorithm having the highest
+accuracy when deciding which algorithm to switch to, but is designed to allow
+the other algorithm to run as well to accomodate changes in the running
+programme environment.
+
+The switching algorithm works by first using a random number generator to
+choose a number between 0 and 100. Then, the accuracy of the algorithm with the
+highest accuracy is multiplied by 100, giving the percentage accuracy of the
+algorithm. This is then used to choose the algorithm to switch to; if the randomly
+selected number is lower than or equal to the percentage accuracy of the highest
+performing algorithm, that algorithm is selected, otherwise the other algorithm
+is selected.
+
+\section{Methodology}
+The main reason for a prefetcher is to make the system faster. To qualify if a new prefetcher implementation is good it´s interesting to have a number that tells you how much faster it is. This number can be the speedup, the speedup gives an overview of the overall performance of the prefetcher. Other important measurements are Coverage, Accuracy, Identified, Issued and Misses. 
+Simulator
+
+The prefetcher in this paper is tested on a M5 simulator system with a subset of SPEC CPU2000 benchmark. The M5 simulator is a software platform that allows simulating a complete hardware system. The simulated CPU is an Alpha 21264, which is an out-of-order processor. The memory settings used for our simulations are shown in table \ref{tab:simsetup}. There is no prefetching for the L1 cache. Statistics are gathered after fast-forwarding 10000000 instructions.
+
+\begin{table}[h]
+	\caption{Simulator setup}
+	\label{tab:simsetup}
+	\centering
+
+	\begin{tabular}{|l|l|}
+		\hline
+		L1 data cache & 64~kb \\
+		L1 instruction cache & 32~kb \\
+		L2 cache size & 1~Mb \\
+		Memory bus width & 400~MHz \\
+		Memory latency & 30~ns \\
+		\hline
+	\end{tabular}
+\end{table}
+
+%And the subset of SPEC CPU2000 contains the following tests: swim, twolf, bzip2_source, apsi, bizp2_graphic, galgel, bizip2_program, art470, art110, applu, wupwise and ammp. 
+
+The simulations was done on our personal computers with a modified linux version with M5 and on a computer cluster on NTNU. To run the SPEC CPU2000 in the M5 simulator a python script was used. The python script determines which of the test in SPEC CPU2000 to run and it prints out the results from the different tests. 
+
+
+\section{Results}
+Amazingly good results.
+
+\section{Discussion}
+Discuss our amazing results here.
+
+\section{Conclusion}
+We won the competition when all the better prefetchers turned out to be better due to cheating.
+
+\end{document}
+
